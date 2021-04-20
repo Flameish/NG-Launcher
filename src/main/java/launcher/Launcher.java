@@ -7,11 +7,15 @@ import java.nio.channels.Channels;
 import java.nio.channels.ReadableByteChannel;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 public class Launcher {
     private final String manifestBackupURL = "https://dl.dropboxusercontent.com/s/i636lfkkvfdz6pv/manifest.json";
     private final Manifest oldManifest;
     private final Manifest newManifest;
+    private final ExecutorService executor = Executors.newFixedThreadPool(5);
     private List<ManifestItem> toUpdateList = new ArrayList<>();
     private List<ManifestItem> toRemove = new ArrayList<>();
     private URL manifestURL;
@@ -43,22 +47,34 @@ public class Launcher {
         }
         try {
             for(ManifestItem toUpdateFile: toUpdateList) {
-                File file = new File(toUpdateFile.getFilePath());
-                file.getParentFile().mkdirs();
-                downloadFileFromURL(new URL(toUpdateFile.getDownloadLink()), file);
+                executor.execute(() -> {
+                    File file = new File(toUpdateFile.getFilePath());
+                    file.getParentFile().mkdirs();
+                    try {
+                        downloadFileFromURL(new URL(toUpdateFile.getDownloadLink()), file);
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                });
             }
-            for(ManifestItem toRemoveFile: toRemove) {
-                File file = new File(toRemoveFile.getFilePath());
-                if(file.exists()) {
-                    if(file.delete()) {
-                        System.out.println("[INFO] " + toRemoveFile.getFilePath() + " removed");
-                    } else {
-                        System.err.println("[ERROR] Failed to remove " + toRemoveFile.getFilePath());
+            executor.shutdown();
+            try {
+                executor.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS);
+                for(ManifestItem toRemoveFile: toRemove) {
+                    File file = new File(toRemoveFile.getFilePath());
+                    if(file.exists()) {
+                        if(file.delete()) {
+                            System.out.println("[INFO] " + toRemoveFile.getFilePath() + " removed");
+                        } else {
+                            System.err.println("[ERROR] Failed to remove " + toRemoveFile.getFilePath());
+                        }
                     }
                 }
-
+                downloadFileFromURL(manifestURL, new File("manifest.json"));
+            } catch (InterruptedException e) {
+                System.err.println("[ERROR] " + e.getMessage());
+                e.printStackTrace();
             }
-            downloadFileFromURL(manifestURL, new File("manifest.json"));
         } catch (Exception e) {
             e.printStackTrace();
         }

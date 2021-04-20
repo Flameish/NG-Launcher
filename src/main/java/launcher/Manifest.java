@@ -24,6 +24,8 @@ public class Manifest {
             for (Object item: items) {
                 manifestItems.add(new ManifestItem((JSONObject) item));
             }
+        } catch (FileNotFoundException e) {
+            System.err.println("[INFO] No local manifest found.");
         } catch (IOException | ParseException e) {
             e.printStackTrace();
         }
